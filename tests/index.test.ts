@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createFakeGenerator, type FakeGeneratorOptions } from '../src/index';
+import { interfaceToZod } from '../src/index';
+import { $ZodShape } from 'zod/v4/core';
+import { ZodAny, ZodArray, ZodBoolean, ZodDate, ZodEmail, ZodNull, ZodNumber, ZodObject, ZodOptional, ZodRecord, ZodString, ZodUndefined, ZodUnion } from 'zod';
 
 // Test interfaces
 interface SimpleUser {
@@ -42,103 +44,80 @@ interface Book {
   author: UserWithInterfaceTypes;
 }
 
-describe('createFakeGenerator', () => {
-  it('should generate mock data for simple interface', () => {
-    const generateUsers = createFakeGenerator<SimpleUser>("SimpleUser", __filename);
-    const users = generateUsers(3);
-    
-    expect(users).toHaveLength(3);
-    expect(users[0]).toHaveProperty('id');
-    expect(users[0]).toHaveProperty('name');
-    expect(users[0]).toHaveProperty('email');
-    expect(users[0]).toHaveProperty('age');
-    expect(users[0]).toHaveProperty('isActive');
-    
-    const user = users[0]!;
-    expect(typeof user.id).toBe('string');
-    expect(typeof user.name).toBe('string');
-    expect(typeof user.email).toBe('string');
-    expect(typeof user.age).toBe('number');
-    expect(typeof user.isActive).toBe('boolean');
+describe('interfaceToZod', () => {
+  it('should generate Zod schema for simple interface', () => {
+    const SimpleUserSchema = interfaceToZod<SimpleUser>("SimpleUser", __filename);
+
+    expect(SimpleUserSchema.def.type).toBe('object');
+    const shape = (SimpleUserSchema.def as any).shape as $ZodShape;
+    expect(Object.keys(shape)).toHaveLength(5);
+    expect(Object.keys(shape)).toEqual(['id', 'name', 'email', 'age', 'isActive']);
+    expect(shape.id).toBeInstanceOf(ZodString);
+    expect(shape.name).toBeInstanceOf(ZodString);
+    expect(shape.email).toBeInstanceOf(ZodEmail);
+    expect(shape.age).toBeInstanceOf(ZodNumber);
+    expect(shape.isActive).toBeInstanceOf(ZodBoolean);
   });
 
-  it('should generate mock data for complex interface', () => {
-    const generateUsers = createFakeGenerator<ComplexUser>("ComplexUser", __filename);
-    const users = generateUsers(2);
-    
-    expect(users).toHaveLength(2);
-    expect(users[0]).toHaveProperty('id');
-    expect(users[0]).toHaveProperty('profile');
-    expect(users[0]).toHaveProperty('settings');
-    expect(users[0]).toHaveProperty('tags');
-    expect(users[0]).toHaveProperty('metadata');
-    
-    const user = users[0]!;
-    expect(user.profile).toHaveProperty('firstName');
-    expect(user.profile).toHaveProperty('lastName');
-    expect(Array.isArray(user.tags)).toBe(true);
-    expect(user.metadata).toHaveProperty('createdAt');
-    expect(user.metadata.createdAt instanceof Date).toBe(true);
-  });
+  it('should generate Zod schema for complex interface', () => {
+    const ComplexUserSchema = interfaceToZod<ComplexUser>("ComplexUser", __filename);
 
-  it('should handle union types correctly', () => {
-    const generateUsers = createFakeGenerator<UserWithUnions>("UserWithUnions", __filename);
-    const users = generateUsers(5);
-    
-    users.forEach(user => {
-      expect(['active', 'inactive', 'pending']).toContain(user.status);
-      expect(['admin', 'user', 'moderator']).toContain(user.role);
-      expect(typeof user.count).toBe('number');
-    });
-  });
+    expect(ComplexUserSchema.def.type).toBe('object');
+    const shape = (ComplexUserSchema.def as any).shape as $ZodShape;
+    expect(Object.keys(shape)).toHaveLength(5);
+    expect(Object.keys(shape)).toEqual(['id', 'profile', 'settings', 'tags', 'metadata']);
 
-  it('should respect custom options', () => {
-    const options: FakeGeneratorOptions = {
-      arrayLength: 5,
-      optionalPropertyChance: 1.0, // Always include optional properties
-    };
-    
-    const generateUsers = createFakeGenerator<ComplexUser>("ComplexUser", __filename, options);
-    const users = generateUsers(1);
-    
-    const user = users[0]!;
-    expect(user.tags).toHaveLength(5);
-  });
+    expect(shape.id).toBeInstanceOf(ZodString);
+    expect(shape.profile).toBeInstanceOf(ZodObject);
+    expect(shape.settings).toBeInstanceOf(ZodRecord);
+    expect(shape.tags).toBeInstanceOf(ZodArray);
+    expect(shape.metadata).toBeInstanceOf(ZodObject);
 
-  it('should generate single item when count is 1', () => {
-    const generateUsers = createFakeGenerator<SimpleUser>("SimpleUser", __filename);
-    const users = generateUsers(1);
-    
-    expect(users).toHaveLength(1);
-    expect(users[0]).toHaveProperty('id');
-  });
+    const profileShape = (shape.profile as any).shape as $ZodShape;
+    expect(Object.keys(profileShape)).toEqual(['firstName', 'lastName', 'bio']);
+    expect(profileShape.firstName).toBeInstanceOf(ZodString);
+    expect(profileShape.lastName).toBeInstanceOf(ZodString);
+    expect(profileShape.bio).toBeInstanceOf(ZodOptional);
+    if (!(profileShape.bio instanceof ZodOptional)) throw 'never';
+    const profileBioInnerType = profileShape.bio.def.innerType as ZodUnion;
+    expect(profileBioInnerType.def.options).toHaveLength(2);
+    expect(profileBioInnerType.def.options[0]).toBeInstanceOf(ZodUndefined);
+    expect(profileBioInnerType.def.options[1]).toBeInstanceOf(ZodString);
 
-  it('should use default count when no count provided', () => {
-    const generateUsers = createFakeGenerator<SimpleUser>("SimpleUser", __filename);
-    const users = generateUsers();
-    
-    expect(users).toHaveLength(1);
+    const settingsType = shape.settings as ZodRecord;
+    expect(settingsType.keyType).toBeInstanceOf(ZodString);
+    expect(settingsType.valueType).toBeInstanceOf(ZodAny);
+
+    const metadataShape = (shape.metadata as any).shape as $ZodShape;
+    expect(Object.keys(metadataShape)).toEqual(['createdAt', 'updatedAt']);
+    expect(metadataShape.createdAt).toBeInstanceOf(ZodDate);
+    expect(metadataShape.updatedAt).toBeInstanceOf(ZodUnion);
+    if (!(metadataShape.updatedAt instanceof ZodUnion)) throw 'never';
+    expect(metadataShape.updatedAt.options).toHaveLength(2);
+    expect(metadataShape.updatedAt.options[0]).toBeInstanceOf(ZodNull);
+    expect(metadataShape.updatedAt.options[1]).toBeInstanceOf(ZodDate);
   });
 
   it('should throw error for non-existent interface', () => {
     expect(() => {
-      createFakeGenerator("NonExistentInterface", __filename);
+      interfaceToZod("NonExistentInterface", __filename);
     }).toThrow("Interface 'NonExistentInterface' not found");
   });
 
-  it('should generate mock data for interfaces with nested interface types', () => {
-    const generateUsers = createFakeGenerator<UserWithInterfaceTypes>("UserWithInterfaceTypes", __filename);
-    const users = generateUsers(2);
-    
-    expect(users).toHaveLength(2);
-    users.forEach(user => {
-      expect(user).toHaveProperty('id');
-      expect(Array.isArray(user.books)).toBe(true);
-      user.books.forEach(book => {
-        expect(book).toHaveProperty('title');
-        expect(book).toHaveProperty('author');
-        expect(book.author).toEqual({});
-      });
-    });
+  it('should generate Zod schema for interface with nested interface types', () => {
+    const UserWithInterfaceTypesSchema = interfaceToZod<UserWithInterfaceTypes>("UserWithInterfaceTypes", __filename);
+
+    expect(UserWithInterfaceTypesSchema.def.type).toBe('object');
+    const shape = (UserWithInterfaceTypesSchema.def as any).shape as $ZodShape;
+    expect(Object.keys(shape)).toHaveLength(2);
+    expect(Object.keys(shape)).toEqual(['id', 'books']);
+    expect(shape.id).toBeInstanceOf(ZodString);
+    expect(shape.books).toBeInstanceOf(ZodArray);
+    const bookShape = (shape.books as ZodArray).element as ZodObject;
+    expect(bookShape.def.type).toBe('object');
+    const bookShapeDef = (bookShape.def as any).shape as $ZodShape;
+    expect(Object.keys(bookShapeDef)).toEqual(['title', 'author']);
+    expect(bookShapeDef.title).toBeInstanceOf(ZodString);
+    // TODO: Handle recursive types properly
   });
 });

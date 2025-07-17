@@ -1,24 +1,18 @@
 import { Project, SourceFile, Type } from "ts-morph";
-import { faker } from "@faker-js/faker";
+import { z } from "zod/v4";
 import * as path from "path";
 import * as fs from "fs";
 
 /**
- * Configuration options for mock generation
+ * Configuration options for schema generation
  */
 export interface FakeGeneratorOptions {
-  /** Default length for generated arrays */
-  arrayLength?: number;
-  /** Probability (0-1) that optional properties will be included */
-  optionalPropertyChance?: number;
-  /** Min/max length for Record objects */
-  recordLength?: { min: number; max: number };
 }
 
 /**
- * Main class for generating mock data from TypeScript interfaces
+ * Main class for generating Zod schema from TypeScript interfaces
  */
-class MockInterfaceGenerator {
+class ZodSchemaInterfaceGenerator {
   private project: Project | null = null;
   private sourceFiles = new Map<string, SourceFile>();
 
@@ -30,7 +24,7 @@ class MockInterfaceGenerator {
 
     // Find the tsconfig.json file
     const tsConfigPath = this.findTsConfig(filePath);
-    
+
     this.project = new Project({
       tsConfigFilePath: tsConfigPath,
     });
@@ -43,7 +37,7 @@ class MockInterfaceGenerator {
    */
   private findTsConfig(startPath: string): string | undefined {
     let currentDir = path.dirname(startPath);
-    
+
     while (currentDir !== path.dirname(currentDir)) {
       const tsConfigPath = path.join(currentDir, 'tsconfig.json');
       if (fs.existsSync(tsConfigPath)) {
@@ -51,7 +45,7 @@ class MockInterfaceGenerator {
       }
       currentDir = path.dirname(currentDir);
     }
-    
+
     // Fallback: ts-morph will use default configuration
     console.warn('⚠️  tsconfig.json not found, using default configuration');
     return undefined;
@@ -66,7 +60,7 @@ class MockInterfaceGenerator {
     }
 
     const project = this.initProject(filePath);
-    
+
     // Add source file if not already in project
     let sourceFile = project.getSourceFile(filePath);
     if (!sourceFile) {
@@ -78,9 +72,9 @@ class MockInterfaceGenerator {
   }
 
   /**
-   * Generate mock value for a TypeScript type
+   * Generate Zod schema for a TypeScript type
    */
-  private generateMockValue(
+  private generateZodSchema(
     type: Type,
     sourceFile: SourceFile,
     options: FakeGeneratorOptions,
@@ -92,30 +86,24 @@ class MockInterfaceGenerator {
 
     // Handle arrays
     if (type.isArray()) {
-      const elementMock = this.generateMockValue(
+      const elementSchema = this.generateZodSchema(
         type.getArrayElementTypeOrThrow(),
         sourceFile,
         options,
         depth,
         visited
       );
-      const length = options.arrayLength || 2;
-      return `Array.from({ length: ${length} }, () => (${elementMock}))`;
+      return `z.array(${elementSchema})`;
     }
 
-    // Handle string literals
-    if (type.isStringLiteral()) {
-      return `"${type.getLiteralValue()}"`;
-    }
-
-    // Handle other literals
-    if (type.isLiteral()) {
-      return JSON.stringify(type.getLiteralValue());
+    // Handle literals
+    if (type.isLiteral() || type.isStringLiteral()) {
+      return `z.literal(${JSON.stringify(type.getLiteralValue())})`;
     }
 
     // Handle enum literals
     if (type.isEnumLiteral()) {
-      return type.getText();
+      return `z.enum(${type.getSymbolOrThrow().getName()})`;
     }
 
     const text = type.getText();
@@ -124,44 +112,46 @@ class MockInterfaceGenerator {
     if (text === "string") {
       if (propName) {
         const lowerProp = propName.toLowerCase();
-        if (lowerProp.includes("email")) return "faker.internet.email()";
-        if (lowerProp.includes("currency")) return "faker.finance.currencyCode()";
-        if (lowerProp.includes("name")) return "faker.person.fullName()";
-        if (lowerProp.includes("phone")) return "faker.phone.number()";
-        if (lowerProp.includes("address")) return "faker.location.streetAddress()";
-        if (lowerProp.includes("city")) return "faker.location.city()";
-        if (lowerProp.includes("country")) return "faker.location.country()";
-        if (lowerProp.includes("url") || lowerProp.includes("link")) return "faker.internet.url()";
-        if (lowerProp.includes("id")) return "faker.string.uuid()";
+        if (lowerProp.includes("email")) return "z.email()";
+        if (lowerProp.includes("url")) return "z.url()";
       }
-      return "faker.lorem.word()";
+      return "z.string()";
     }
     if (text === "number") {
-      return "faker.number.int({ min: 1, max: 100 })";
+      return "z.number()";
     }
     if (text === "boolean") {
-      return "faker.datatype.boolean()";
+      return "z.boolean()";
     }
     if (text === "Date") {
-      return "faker.date.recent()";
+      return "z.date()";
     }
     if (text === "null") {
-      return "null";
+      return "z.null()";
     }
     if (text === "undefined") {
-      return "undefined";
+      return "z.undefined()";
+    }
+    if (text === "void") {
+      return "z.void()";
     }
     if (text === "any") {
-      return "faker.lorem.word()";
+      return "z.any()";
+    }
+    if (text === "unknown") {
+      return "z.unknown()";
+    }
+    if (text === "never") {
+      return "z.never()";
     }
 
     // Handle union types
     if (type.isUnion()) {
       const unionTypes = type.getUnionTypes();
-      const mockValues = unionTypes
-        .map(t => this.generateMockValue(t, sourceFile, options, depth, visited))
+      const schemaValues = unionTypes
+        .map(t => this.generateZodSchema(t, sourceFile, options, depth, visited))
         .join(", ");
-      return `faker.helpers.arrayElement([${mockValues}])`;
+      return `z.union([${schemaValues}])`;
     }
 
     const apparent = type.getApparentType();
@@ -178,10 +168,9 @@ class MockInterfaceGenerator {
         visited.delete(key);
         return "{}";
       }
-      const keyMock = this.generateMockValue(keyType, sourceFile, options, depth + 1, visited);
-      const mockValue = this.generateMockValue(valueType, sourceFile, options, depth + 1, visited);
-      const { min, max } = options.recordLength || { min: 1, max: 5 };
-      return `Object.fromEntries(Array.from({ length: faker.number.int({ min: ${min}, max: ${max} }) }, () => [${keyMock}, ${mockValue}]))`;
+      const keySchema = this.generateZodSchema(keyType, sourceFile, options, depth + 1, visited);
+      const valueSchema = this.generateZodSchema(valueType, sourceFile, options, depth + 1, visited);
+      return `z.record(${keySchema}, ${valueSchema})`;
     }
 
     // Handle object types
@@ -197,64 +186,60 @@ class MockInterfaceGenerator {
         const propName = prop.getName();
         const propType = prop.getTypeAtLocation(sourceFile);
         const optional = prop.isOptional?.() ?? false;
-        
-        if (optional && Math.random() > (options.optionalPropertyChance || 0.7)) {
-          return null;
+
+        let valueSchema = this.generateZodSchema(propType, sourceFile, options, depth + 1, visited, propName);
+        if (optional) {
+          valueSchema = `z.optional(${valueSchema})`;
         }
 
-        const mockValue = this.generateMockValue(propType, sourceFile, options, depth + 1, visited, propName);
-        return `${indent}  ${JSON.stringify(propName)}: ${mockValue},`;
+        return `${indent}  ${JSON.stringify(propName)}: ${valueSchema},`;
       })
       .filter(Boolean);
 
     visited.delete(key);
-    return `{
+    return `z.object({
 ${lines.join("\n")}
-${indent}}`;
+${indent}})`;
   }
 
   /**
-   * Generate a mock function for a TypeScript interface
+   * Create a Zod schema generator function for a TypeScript interface
    */
-  generateMockFunction<T>(
+  generateZodSchemaFunction<T>(
     interfaceName: string,
     filePath: string,
     options: FakeGeneratorOptions = {}
-  ): (count?: number) => T[] {
+  ): z.ZodType<T> {
     const sourceFile = this.getSourceFile(filePath);
-    
+
     const iface = sourceFile.getInterface(interfaceName);
     if (!iface) {
       throw new Error(`Interface '${interfaceName}' not found in ${path.basename(filePath)}`);
     }
 
-    const mockGenerator = `
-      function create${interfaceName}Mock() {
-        return ${this.generateMockValue(iface.getType(), sourceFile, options)};
+    const schemaGenerator = `
+      function create${interfaceName}ZodSchema() {
+        return ${this.generateZodSchema(iface.getType(), sourceFile, options)};
       }
 
-      function create${interfaceName}Mocks(count = 1) {
-        return Array.from({ length: count }, () => create${interfaceName}Mock());
-      }
-
-      return create${interfaceName}Mocks;
+      return create${interfaceName}ZodSchema();
     `;
 
-    return new Function('faker', mockGenerator)(faker) as (count?: number) => T[];
+    return new Function('z', schemaGenerator)(z);
   }
 }
 
 // Singleton instance
-const generator = new MockInterfaceGenerator();
+const generator = new ZodSchemaInterfaceGenerator();
 
 /**
  * Creates a function to generate fake data for a TypeScript interface.
- * 
- * @param interfaceName Name of the interface to mock
+ *
+ * @param interfaceName Name of the interface to generate Zod schema for
  * @param filePath Path to the file containing the interface (use __filename)
  * @param options Generation options
- * @returns Function that generates mock data: (count?: number) => T[]
- * 
+ * @returns A Zod schema
+ *
  * @example
  * ```typescript
  * interface User {
@@ -262,18 +247,18 @@ const generator = new MockInterfaceGenerator();
  *   name: string;
  *   email: string;
  * }
- * 
- * const generateUsers = mockInterface<User>("User", __filename);
- * const users = generateUsers(5); // Generate 5 mock users
+ *
+ * const UserSchema = interfaceToZod<IUser>("User", __filename);
+ * const user = UserSchema.parse({})
  * ```
  */
-export function createFakeGenerator<T>(
+export function interfaceToZod<T>(
   interfaceName: string,
   filePath: string,
   options: FakeGeneratorOptions = {}
-): (count?: number) => T[] {
-  return generator.generateMockFunction(interfaceName, filePath, options);
+): z.ZodType<T> {
+  return generator.generateZodSchemaFunction(interfaceName, filePath, options);
 }
 
 // Default export for convenience
-export default createFakeGenerator;
+export default interfaceToZod;

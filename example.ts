@@ -1,4 +1,4 @@
-import { createFakeGenerator } from './src/index';
+import { interfaceToZod } from './src/index';
 
 // Test interface
 interface User {
@@ -13,7 +13,7 @@ interface User {
   };
 }
 
-const generateUsers = createFakeGenerator<User>("User", __filename);
-const users = generateUsers(3);
+const UserSchema = interfaceToZod<User>("User", __filename);
+const user = UserSchema.parse({});
 
-console.log("Generated users:", JSON.stringify(users, null, 2));
+console.log("Parsed users:", JSON.stringify(user, null, 2));

@@ -6,7 +6,7 @@ import * as fs from "fs";
 /**
  * Configuration options for schema generation
  */
-export interface FakeGeneratorOptions {
+export interface ZodSchemaGeneratorOptions {
 }
 
 /**
@@ -77,7 +77,7 @@ class ZodSchemaInterfaceGenerator {
   private generateZodSchema(
     type: Type,
     sourceFile: SourceFile,
-    options: FakeGeneratorOptions,
+    options: ZodSchemaGeneratorOptions,
     depth = 0,
     visited = new Set<string>(),
     propName?: string
@@ -108,7 +108,7 @@ class ZodSchemaInterfaceGenerator {
 
     const text = type.getText();
 
-    // Handle primitive types with contextual faker data
+    // Handle primitive types with string formats
     if (text === "string") {
       if (propName) {
         const lowerProp = propName.toLowerCase();
@@ -208,7 +208,7 @@ ${indent}})`;
   generateZodSchemaFunction<T>(
     interfaceName: string,
     filePath: string,
-    options: FakeGeneratorOptions = {}
+    options: ZodSchemaGeneratorOptions = {}
   ): z.ZodType<T> {
     const sourceFile = this.getSourceFile(filePath);
 
@@ -233,7 +233,7 @@ ${indent}})`;
 const generator = new ZodSchemaInterfaceGenerator();
 
 /**
- * Creates a function to generate fake data for a TypeScript interface.
+ * Creates a function to generate Zod schema from a TypeScript interface.
  *
  * @param interfaceName Name of the interface to generate Zod schema for
  * @param filePath Path to the file containing the interface (use __filename)
@@ -255,7 +255,7 @@ const generator = new ZodSchemaInterfaceGenerator();
 export function interfaceToZod<T>(
   interfaceName: string,
   filePath: string,
-  options: FakeGeneratorOptions = {}
+  options: ZodSchemaGeneratorOptions = {}
 ): z.ZodType<T> {
   return generator.generateZodSchemaFunction(interfaceName, filePath, options);
 }

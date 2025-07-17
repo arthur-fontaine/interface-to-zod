@@ -1,7 +1,8 @@
-import { Project, SourceFile, Type } from "ts-morph";
+import { CallExpression, Identifier, Node, Project, SourceFile, SyntaxKind, Type } from "ts-morph";
 import { z } from "zod/v4";
-import * as path from "path";
-import * as fs from "fs";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import * as util from "node:util";
 
 /**
  * Configuration options for schema generation
@@ -227,6 +228,130 @@ ${indent}})`;
 
     return new Function('z', schemaGenerator)(z);
   }
+
+  /**
+   * Automatically detect caller information and generate Zod schema
+   */
+  generateZodSchemaFromCallSite<T>(options: ZodSchemaGeneratorOptions = {}): z.ZodType<T> {
+    const callSites = util.getCallSites();
+
+    if (callSites.length < 2) {
+      throw new Error('Unable to detect caller information');
+    }
+
+    // Get the caller's call site (skip the current function)
+    const fileName = typeof __filename === 'string' ? __filename : import.meta.filename;
+    const callerSite = callSites.find(site => site.scriptName !== fileName && site.scriptName !== `file://${fileName}`);
+    if (!callerSite) {
+      throw new Error('Unable to find caller information');
+    }
+    const scriptName = callerSite.scriptName.replace(/^file:\/\//, '');
+    const lineNumber = callerSite.lineNumber;
+    const columnNumber = callerSite.columnNumber;
+
+    if (!scriptName || !lineNumber) {
+      throw new Error('Unable to get caller file information');
+    }
+
+    // Read the source file to extract the type parameter
+    const sourceContent = fs.readFileSync(scriptName, 'utf8');
+    const filePath = scriptName;
+
+    // Try to find the interface in the current file first
+    const sourceFile = this.getSourceFile(filePath);
+    let nodeFound: Identifier | undefined;
+    sourceFile.forEachDescendant((node) => {
+      const start = node.getStart();
+      const end = node.getEnd();
+
+      const startPos = sourceFile.getLineAndColumnAtPos(start);
+      const endPos = sourceFile.getLineAndColumnAtPos(end);
+
+      // Check if the line and column number fall within the node's range
+      if (
+        (startPos.line <= lineNumber && lineNumber <= endPos.line) &&
+        (startPos.line < lineNumber || startPos.column <= columnNumber) &&
+        (endPos.line > columnNumber || endPos.column >= columnNumber)
+      ) {
+        nodeFound = node as Identifier; // It automatically gets the last matching node, which is our function call
+      }
+    });
+    if (!nodeFound) {
+      throw new Error(`Unable to find interface declaration at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    if (!(nodeFound instanceof Identifier)) {
+      throw new Error(`Expected an identifier at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    const callExpression = nodeFound.getFirstAncestorByKindOrThrow(SyntaxKind.CallExpression);
+    if (!callExpression) {
+      throw new Error(`Expected a call expression at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    const typeArguments = callExpression.getTypeArguments();
+    if (typeArguments.length === 0) {
+      throw new Error(`No type arguments found in call expression at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    if (typeArguments.length > 1) {
+      throw new Error(`Multiple type arguments found in call expression at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    const typeArg = typeArguments[0].getType();
+
+    const interfaceSymbol = typeArg.getSymbol();
+    if (!interfaceSymbol) {
+      throw new Error(`No symbol found for interface at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    const declarations = interfaceSymbol.getDeclarations();
+    if (declarations.length === 0) {
+      throw new Error(`No declarations found for interface at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    if (declarations.length > 1) {
+      throw new Error(`Multiple declarations found for interface at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+    const declaration = declarations[0];
+    if (!declaration.isKind(SyntaxKind.InterfaceDeclaration)) {
+      throw new Error(`Expected an interface declaration for at ${lineNumber}:${columnNumber} in ${path.basename(filePath)}`);
+    }
+
+    const declarationFilePath = declaration.getSourceFile().getFilePath();
+    const interfaceName = interfaceSymbol.getName();
+
+    return this.generateZodSchemaFunction<T>(interfaceName, declarationFilePath, options);
+  }
+
+  /**
+   * Resolve import path to absolute file path
+   */
+  private resolveImportPath(moduleSpecifier: string, fromFile: string): string | null {
+    try {
+      const fromDir = path.dirname(fromFile);
+
+      // Handle relative imports
+      if (moduleSpecifier.startsWith('./') || moduleSpecifier.startsWith('../')) {
+        const resolvedPath = path.resolve(fromDir, moduleSpecifier);
+
+        // Try different extensions
+        const extensions = ['.ts', '.tsx', '.js', '.jsx'];
+        for (const ext of extensions) {
+          const fullPath = resolvedPath + ext;
+          if (fs.existsSync(fullPath)) {
+            return fullPath;
+          }
+        }
+
+        // Try index file
+        for (const ext of extensions) {
+          const indexPath = path.join(resolvedPath, 'index' + ext);
+          if (fs.existsSync(indexPath)) {
+            return indexPath;
+          }
+        }
+      }
+
+      // Handle absolute imports (would need more complex resolution)
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
 }
 
 // Singleton instance
@@ -252,11 +377,24 @@ const generator = new ZodSchemaInterfaceGenerator();
  * const user = UserSchema.parse({})
  * ```
  */
+ export function interfaceToZod<T>(
+   interfaceName?: string,
+   filePath?: string,
+   options?: ZodSchemaGeneratorOptions
+ ): z.ZodType<T>
+ export function interfaceToZod<T>(
+   interfaceName: string,
+   filePath: string,
+   options?: ZodSchemaGeneratorOptions
+ ): z.ZodType<T>
 export function interfaceToZod<T>(
-  interfaceName: string,
-  filePath: string,
+  interfaceName?: string,
+  filePath?: string,
   options: ZodSchemaGeneratorOptions = {}
-): z.ZodType<T> {
+) {
+  if (interfaceName === undefined || filePath === undefined) {
+    return generator.generateZodSchemaFromCallSite<T>(options);
+  }
   return generator.generateZodSchemaFunction(interfaceName, filePath, options);
 }
 

@@ -15,7 +15,7 @@ yarn add interface-to-zod
 ## Usage
 
 ```typescript
-import { createFakeGenerator } from 'interface-to-zod';
+import { interfaceToZod } from 'interface-to-zod';
 
 // Define your interface
 interface User {
@@ -31,16 +31,7 @@ interface User {
   };
 }
 
-// Generate mock data
-const generateUsers = createFakeGenerator<User>("User", __filename);
-
-// Generate a single user (returns array with 1 item)
-const singleUser = generateUsers(1)[0];
-
-// Generate multiple users
-const users = generateUsers(10);
-
-console.log(users);
+const UserSchema = interfaceToZod<User>("User", __filename);
 ```
 
 ## Advanced Usage

@@ -1,7 +1,6 @@
-import { interfaceToZod } from './src/index';
+import { interfaceToZod } from './src/index.ts';
 
-// Test interface
-interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
@@ -13,7 +12,4 @@ interface User {
   };
 }
 
-const UserSchema = interfaceToZod<User>("User", __filename);
-const user = UserSchema.parse({});
-
-console.log("Parsed users:", JSON.stringify(user, null, 2));
+const UserSchema = interfaceToZod<User>();

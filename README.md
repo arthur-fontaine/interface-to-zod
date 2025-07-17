@@ -5,17 +5,17 @@ Generate realistic mock data for TypeScript interfaces using faker.js and ts-mor
 ## Installation
 
 ```bash
-npm install interface-faker
+npm install interface-to-zod
 # or
-pnpm add interface-faker
+pnpm add interface-to-zod
 # or
-yarn add interface-faker
+yarn add interface-to-zod
 ```
 
 ## Usage
 
 ```typescript
-import { createFakeGenerator } from 'interface-faker';
+import { createFakeGenerator } from 'interface-to-zod';
 
 // Define your interface
 interface User {

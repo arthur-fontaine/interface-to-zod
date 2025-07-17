@@ -1,5 +1,5 @@
 {
-  "name": "interface-faker",
+  "name": "interface-to-zod",
   "version": "0.1.1",
   "description": "Generate mock data for TypeScript interfaces using faker.js",
   "main": "dist/index.js",

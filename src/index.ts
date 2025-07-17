@@ -4,6 +4,10 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as util from "node:util";
 
+type GenericZodObject<T extends Record<string, any>> = z.ZodObject<{
+  [K in keyof T]-?: undefined extends T[K] ? z.ZodOptional<z.ZodType<NonNullable<T[K]>>> : z.ZodType<T[K]>;
+}>
+
 /**
  * Configuration options for schema generation
  */
@@ -206,11 +210,11 @@ ${indent}})`;
   /**
    * Create a Zod schema generator function for a TypeScript interface
    */
-  generateZodSchemaFunction<T>(
+  generateZodSchemaFunction<T extends Record<string, any>>(
     interfaceName: string,
     filePath: string,
     options: ZodSchemaGeneratorOptions = {}
-  ): z.ZodType<T> {
+  ): GenericZodObject<T> {
     const sourceFile = this.getSourceFile(filePath);
 
     const iface = sourceFile.getInterface(interfaceName);
@@ -232,7 +236,7 @@ ${indent}})`;
   /**
    * Automatically detect caller information and generate Zod schema
    */
-  generateZodSchemaFromCallSite<T>(options: ZodSchemaGeneratorOptions = {}): z.ZodType<T> {
+  generateZodSchemaFromCallSite<T extends Record<string, any>>(options: ZodSchemaGeneratorOptions = {}): GenericZodObject<T> {
     const callSites = util.getCallSites();
 
     if (callSites.length < 2) {
@@ -377,17 +381,17 @@ const generator = new ZodSchemaInterfaceGenerator();
  * const user = UserSchema.parse({})
  * ```
  */
- export function interfaceToZod<T>(
+ export function interfaceToZod<T extends Record<string, any>>(
    interfaceName?: string,
    filePath?: string,
    options?: ZodSchemaGeneratorOptions
- ): z.ZodType<T>
- export function interfaceToZod<T>(
+ ): GenericZodObject<T>
+ export function interfaceToZod<T extends Record<string, any>>(
    interfaceName: string,
    filePath: string,
    options?: ZodSchemaGeneratorOptions
- ): z.ZodType<T>
-export function interfaceToZod<T>(
+ ): GenericZodObject<T>
+export function interfaceToZod<T extends Record<string, any>>(
   interfaceName?: string,
   filePath?: string,
   options: ZodSchemaGeneratorOptions = {}

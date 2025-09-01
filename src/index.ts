@@ -12,6 +12,8 @@ type GenericZodObject<T extends Record<string, any>> = z.ZodObject<{
  * Configuration options for schema generation
  */
 export interface ZodSchemaGeneratorOptions {
+  /** Properties to ignore smart detection (z.email(), z.url(), etc.) */
+  excludedSmartDetections?: string[];
 }
 
 /**
@@ -115,6 +117,9 @@ class ZodSchemaInterfaceGenerator {
 
     // Handle primitive types with string formats
     if (text === "string") {
+      if (options.excludedSmartDetections?.includes(propName || "")) {
+        return "z.string()";
+      }
       if (propName) {
         const lowerProp = propName.toLowerCase();
         if (lowerProp.includes("email")) return "z.email()";
@@ -381,6 +386,7 @@ const generator = new ZodSchemaInterfaceGenerator();
  * const user = UserSchema.parse({})
  * ```
  */
+ export function interfaceToZod<T extends Record<string, any>>(options?: ZodSchemaGeneratorOptions): GenericZodObject<T>
  export function interfaceToZod<T extends Record<string, any>>(
    interfaceName?: string,
    filePath?: string,
@@ -392,10 +398,12 @@ const generator = new ZodSchemaInterfaceGenerator();
    options?: ZodSchemaGeneratorOptions
  ): GenericZodObject<T>
 export function interfaceToZod<T extends Record<string, any>>(
-  interfaceName?: string,
+  interfaceNameOrOptions?: string | ZodSchemaGeneratorOptions,
   filePath?: string,
-  options: ZodSchemaGeneratorOptions = {}
+  options_: ZodSchemaGeneratorOptions = {}
 ) {
+  const options = typeof interfaceNameOrOptions === 'string' ? options_ : (interfaceNameOrOptions || {});
+  const interfaceName = typeof interfaceNameOrOptions === 'object' ? undefined : interfaceNameOrOptions;
   if (interfaceName === undefined || filePath === undefined) {
     return generator.generateZodSchemaFromCallSite<T>(options);
   }

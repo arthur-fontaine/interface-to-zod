@@ -38,15 +38,18 @@ const UserSchema = interfaceToZod<User>("User", __filename);
 
 ### Smart Property Detection
 
-Interface Faker automatically detects common property patterns and generates appropriate fake data:
+`interface-to-zod` automatically detects common property patterns and generates appropriate fake data:
 
-- **Email**: Properties containing "email" → `faker.internet.email()`
-- **Name**: Properties containing "name" → `faker.person.fullName()`
-- **Phone**: Properties containing "phone" → `faker.phone.number()`
-- **Currency**: Properties containing "currency" → `faker.finance.currencyCode()`
-- **ID**: Properties containing "id" → `faker.string.uuid()`
-- **Address**: Properties containing "address" → `faker.location.streetAddress()`
-- **URL**: Properties containing "url" or "link" → `faker.internet.url()`
+- **Email**: Properties containing "email" → `z.email()`
+- **URL**: Properties containing "url" or "link" → `z.url()`
+
+You can exclude specific properties from smart detection using the `excludedSmartDetections` option:
+
+```typescript
+const UserSchema = interfaceToZod<User>("User", __filename, {
+  excludedSmartDetections: ["email", "profileUrl"]
+});
+```
 
 ## API Reference
 

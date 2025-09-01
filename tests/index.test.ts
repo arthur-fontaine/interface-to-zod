@@ -120,4 +120,19 @@ describe('interfaceToZod', () => {
     expect(bookShapeDef.title).toBeInstanceOf(ZodString);
     // TODO: Handle recursive types properly
   });
+
+  it('should skip smart detections for specified properties', () => {
+    const SimpleUserSchema = interfaceToZod<SimpleUser>(
+      "SimpleUser",
+      __filename,
+      { excludedSmartDetections: ['email', 'url', 'uuid'] },
+    );
+
+    expect(SimpleUserSchema.def.type).toBe('object');
+    const shape = (SimpleUserSchema.def as any).shape as $ZodShape;
+    expect(Object.keys(shape)).toHaveLength(5);
+    expect(Object.keys(shape)).toEqual(['id', 'name', 'email', 'age', 'isActive']);
+    expect(shape.id).toBeInstanceOf(ZodString);
+    expect(shape.email).toBeInstanceOf(ZodString);
+  });
 });

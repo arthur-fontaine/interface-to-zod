@@ -14,6 +14,8 @@ type GenericZodObject<T extends Record<string, any>> = z.ZodObject<{
 export interface ZodSchemaGeneratorOptions {
   /** Properties to ignore smart detection (z.email(), z.url(), etc.) */
   excludedSmartDetections?: string[];
+  /** Custom type generators as [pattern, replacement] where replacement is a string evaluated as Zod schema */
+  customTypeGenerators?: [RegExp | string, `z.${string}(${string}`][];
 }
 
 /**
@@ -114,6 +116,16 @@ class ZodSchemaInterfaceGenerator {
     }
 
     const text = type.getText();
+
+    // Handle excluded types
+    if (options.customTypeGenerators) {
+      for (const [pattern, replacement] of options.customTypeGenerators) {
+        if ((typeof pattern === 'string' && text === pattern) ||
+            (pattern instanceof RegExp && pattern.test(text))) {
+          return replacement;
+        }
+      }
+    }
 
     // Handle primitive types with string formats
     if (text === "string") {

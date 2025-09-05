@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { interfaceToZod } from '../src/index';
 import { $ZodShape } from 'zod/v4/core';
-import { ZodAny, ZodArray, ZodBoolean, ZodDate, ZodEmail, ZodNull, ZodNumber, ZodObject, ZodOptional, ZodRecord, ZodString, ZodUndefined, ZodUnion } from 'zod';
+import { ZodAny, ZodArray, ZodBoolean, ZodDate, ZodEmail, ZodEnum, ZodNull, ZodNumber, ZodObject, ZodOptional, ZodRecord, ZodString, ZodUndefined, ZodUnion } from 'zod';
 
 // Test interfaces
 interface SimpleUser {
@@ -134,5 +134,22 @@ describe('interfaceToZod', () => {
     expect(Object.keys(shape)).toEqual(['id', 'name', 'email', 'age', 'isActive']);
     expect(shape.id).toBeInstanceOf(ZodString);
     expect(shape.email).toBeInstanceOf(ZodString);
+  });
+
+  it('should replace specified types with custom Zod schemas', () => {
+    const UserWithUnionsSchema = interfaceToZod<UserWithUnions>(
+      "UserWithUnions",
+      __filename,
+      { customTypeGenerators: [['"active" | "inactive" | "pending"', 'z.enum(["active", "inactive", "pending"])'], ['"admin" | "user" | "moderator"', 'z.enum(["admin", "user", "moderator"])']] },
+    );
+
+    expect(UserWithUnionsSchema.def.type).toBe('object');
+    const shape = (UserWithUnionsSchema.def as any).shape as $ZodShape;
+    expect(Object.keys(shape)).toHaveLength(4);
+    expect(Object.keys(shape)).toEqual(['id', 'status', 'role', 'count']);
+    expect(shape.id).toBeInstanceOf(ZodString);
+    expect(shape.status).toBeInstanceOf(ZodEnum);
+    expect(shape.role).toBeInstanceOf(ZodEnum);
+    expect(shape.count).toBeInstanceOf(ZodNumber);
   });
 });
